@@ -1,0 +1,1191 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arrhythmia Workstation | AI Dashboard</title>
+
+    <style>
+        :root {
+            --bg-dark: #0a0a0a;
+            --panel-bg: rgba(30, 30, 30, 0.6);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --accent-primary: #00ff99;
+            /* Neon Green */
+            --accent-secondary: #00ccff;
+            /* Neon Blue */
+            --text-main: #e0e0e0;
+            --text-muted: #a0a0a0;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-main);
+            overflow: hidden;
+            background-image: radial-gradient(circle at 50% 50%, #1a1a1a 0%, #000 100%);
+            font-size: clamp(12px, 1.1vw, 15px);
+        }
+
+        .glass-panel {
+            background: var(--panel-bg);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        #topBar {
+            background: rgba(20, 20, 20, 0.8);
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            backdrop-filter: blur(5px);
+        }
+
+        #segmentInfo {
+            font-size: clamp(16px, 2vw, 24px);
+            font-weight: 600;
+            color: var(--accent-secondary);
+            text-shadow: 0 0 10px rgba(0, 204, 255, 0.3);
+        }
+
+        #navButtons button {
+            margin-left: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border-color);
+            color: white;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+
+        #navButtons button:hover {
+            background: var(--accent-secondary);
+            color: black;
+            box-shadow: 0 0 10px var(--accent-secondary);
+        }
+
+        #mainContainer {
+            display: flex;
+            flex-direction: row;
+            height: calc(100vh - 50px);
+            padding: 0;
+            gap: 0;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        #ecgArea {
+            flex: 1 1 auto;
+            min-height: 200px;
+            padding: 0;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #ecgCanvas {
+            width: 100%;
+            height: 100%;
+            background-color: #050505;
+            cursor: crosshair;
+        }
+
+        #infoArea {
+            flex: 0 0 auto;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            overflow: hidden;
+            min-height: 180px;
+        }
+
+        .card {
+            background: rgba(40, 40, 40, 0.4);
+            padding: clamp(8px, 1vw, 15px);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            min-width: 0;
+        }
+
+        .card h3 {
+            margin: 0 0 8px 0;
+            color: var(--accent-primary);
+            font-size: clamp(10px, 1vw, 14px);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 6px;
+        }
+
+        textarea,
+        select,
+        input {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            color: #fff;
+            border: 1px solid var(--border-color);
+            padding: 8px;
+            margin-top: 5px;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-family: inherit;
+            font-size: 13px;
+        }
+
+        /* State Overlays */
+        .state-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        .state-overlay.visible {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .overlay-warmup {
+            background: rgba(30, 30, 30, 0.85);
+            color: #888;
+        }
+
+        .overlay-unreliable {
+            background: rgba(80, 60, 20, 0.6);
+            color: #ffcc00;
+        }
+
+        .overlay-msg {
+            font-size: clamp(16px, 2.5vw, 28px);
+            font-weight: bold;
+            border: 2px solid currentColor;
+            padding: 15px 25px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+
+        /* Suppressed Side Panel */
+        #suppressedPanel {
+            position: absolute;
+            right: 10px;
+            top: 10px;
+            width: clamp(150px, 15vw, 220px);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .suppressed-card {
+            background: rgba(20, 20, 20, 0.9);
+            border-left: 4px solid #ff4444;
+            padding: 10px;
+            font-size: 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Inspector Modal */
+        #inspectorModal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: min(500px, 90vw);
+            max-height: 80vh;
+            overflow-y: auto;
+            background: #151515;
+            border: 1px solid var(--accent-secondary);
+            z-index: 1000;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 0 100px rgba(0, 0, 0, 1);
+        }
+
+        .close-btn {
+            float: right;
+            cursor: pointer;
+            font-size: 20px;
+            color: var(--text-muted);
+        }
+
+        .inspect-row {
+            margin-bottom: 15px;
+        }
+
+        .inspect-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .inspect-value {
+            font-size: 16px;
+            margin-top: 5px;
+            color: white;
+        }
+
+        /* ECG Grid Background */
+        .ecg-background {
+            background-color: #fff;
+            background-image:
+                linear-gradient(#f0d0d0 1px, transparent 1px),
+                linear-gradient(90deg, #f0d0d0 1px, transparent 1px),
+                linear-gradient(#f8e8e8 1px, transparent 1px),
+                linear-gradient(90deg, #f8e8e8 1px, transparent 1px);
+            background-size:
+                50px 50px, 50px 50px,
+                10px 10px, 10px 10px;
+            background-position: -1px -1px;
+        }
+
+        canvas#ecgCanvas {
+            background-color: transparent !important;
+        }
+
+        /* Badges */
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .badge-success {
+            background: #00ff99;
+            color: black;
+        }
+
+        .badge-warning {
+            background: #ffcc00;
+            color: black;
+        }
+
+        /* Sidebar Segment List */
+        #sidebar {
+            width: clamp(160px, 15vw, 250px);
+            min-width: 140px;
+            background: rgba(20, 20, 20, 0.8);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            backdrop-filter: blur(10px);
+            flex-shrink: 0;
+        }
+
+        .segment-row {
+            padding: 10px 15px;
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .segment-row:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .segment-row.active {
+            background: rgba(0, 255, 153, 0.1);
+            border-left: 4px solid var(--accent-primary);
+        }
+
+        /* ===== RESPONSIVE BREAKPOINTS ===== */
+
+        /* Large laptops / smaller monitors (< 1400px) */
+        @media (max-width: 1400px) {
+            #infoArea {
+                grid-template-columns: repeat(4, 1fr);
+                gap: 6px;
+            }
+
+            .card {
+                padding: 10px;
+            }
+        }
+
+        /* Medium laptops (< 1200px) */
+        @media (max-width: 1200px) {
+            #infoArea {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 6px;
+            }
+
+            #sidebar {
+                width: clamp(130px, 14vw, 200px);
+            }
+
+            .segment-row {
+                padding: 7px 10px;
+                font-size: 11px;
+            }
+        }
+
+        /* Small laptops / tablets (< 900px) */
+        @media (max-width: 900px) {
+            #mainContainer {
+                flex-direction: column !important;
+                overflow-y: auto;
+            }
+
+            #sidebar {
+                width: 100% !important;
+                flex-direction: row;
+                overflow-x: auto;
+                overflow-y: hidden;
+                max-height: 60px;
+                border-right: none;
+                border-bottom: 1px solid var(--border-color);
+            }
+
+            .segment-row {
+                white-space: nowrap;
+                padding: 5px 10px;
+                font-size: 11px;
+            }
+
+            #contentArea {
+                overflow-y: auto !important;
+            }
+
+            #ecgArea {
+                min-height: 250px;
+            }
+
+            #infoArea {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        /* Tall screens: give more space to ECG */
+        @media (min-height: 900px) {
+            #ecgArea {
+                min-height: 350px;
+            }
+        }
+
+        /* Short screens: compress info area */
+        @media (max-height: 700px) {
+            #ecgArea {
+                min-height: 180px;
+            }
+
+            .card h3 {
+                font-size: 10px;
+                margin-bottom: 4px;
+                padding-bottom: 4px;
+            }
+
+            .card {
+                padding: 6px;
+            }
+
+            #infoArea {
+                gap: 4px;
+                min-height: 140px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="topBar">
+        <div style="display:flex; align-items:center; gap:20px;">
+            <div id="segmentInfo" style="display: flex; align-items: center; gap: 10px;">
+                SEGMENT <span id="segmentID">--</span>
+                <span id="header-verified-icon" style="display: none; font-size: 16px; color: #00ff99;"
+                    title="Verified by Cardiologist">✅</span>
+            </div>
+            <div id="navButtons" style="display:flex; gap:5px;">
+                <input type="number" id="search-segment-id" placeholder="ID..."
+                    style="width: 60px; padding: 4px; border-radius: 4px; border: 1px solid #444; background: #222; color: #fff;">
+                <button onclick="goToSegmentInput()">Go</button>
+                <div style="width: 10px;"></div> <!-- Spacer -->
+                <button id="prevBtn">◀ Prev</button>
+                <button id="nextBtn">Next ▶</button>
+            </div>
+        </div>
+        <div id="stateBadge" style="font-size:12px; color:var(--accent-primary); font-family:monospace;">STABLE</div>
+    </div>
+
+    <div id="mainContainer">
+        <!-- Sidebar Segment List -->
+        <div id="sidebar">
+            <div
+                style="padding: 15px; border-bottom: 1px solid var(--border-color); font-weight: bold; color: var(--accent-primary);">
+                WORKLIST</div>
+            {% for segment in all_segments %}
+            <div class="segment-row {{ 'active' if segment.id == initial_segment_id }}" id="row-{{ segment.id }}"
+                onclick="loadSegment({{ segment.id }})">
+                <div style="font-size: 12px;">ID {{ segment.id }} <span style="opacity: 0.5;">({{ segment.filename[:8]
+                        }}...)</span></div>
+                <div>
+                    <span class="badge badge-success" id="status-badge-{{ segment.id }}"
+                        style="display: {{ 'none' if segment.status != 'confirmed' else 'inline-block' }}">
+                        ✅ Verified
+                    </span>
+                    <span class="badge badge-warning" id="pending-badge-{{ segment.id }}"
+                        style="display: {{ 'none' if segment.status == 'confirmed' else 'inline-block' }}">
+                        ⚠️ Pending
+                    </span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div id="contentArea"
+            style="flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 8px; overflow: hidden; min-width: 0;">
+            <div id="ecgArea" class="glass-panel">
+                <div class="ecg-background" style="width: 100%; height: 100%; position: relative;">
+                    <canvas id="ecgCanvas"></canvas>
+
+                    <div id="overlayWarmup" class="state-overlay overlay-warmup">
+                        <div class="overlay-msg">System Initializing...</div>
+                    </div>
+                    <div id="overlayUnreliable" class="state-overlay overlay-unreliable">
+                        <div class="overlay-msg">Poor Signal Quality</div>
+                    </div>
+
+                    <div id="suppressedPanel"></div>
+                </div>
+            </div>
+
+            <div id="infoArea">
+                <!-- 1. Decision -->
+                <div class="card">
+                    <h3>Primary Conclusion</h3>
+                    <div id="arrLabel" style="font-size:20px; font-weight:bold; color:white; margin-bottom:10px;">--
+                    </div>
+                    <div id="backgroundLabel" style="font-size:13px; color:var(--text-muted);">Background: --</div>
+                    <div style="margin-top:20px;">
+                        <button id="analyzeBtn" style="background:var(--accent-secondary); color:black; width:100%;">Run
+                            Decision Engine</button>
+                    </div>
+                </div>
+
+                <!-- 2. Vitals -->
+                <div class="card">
+                    <h3>Vitals Features</h3>
+                    <div style="font-size:32px; font-weight:300; color:var(--accent-primary); margin-bottom:10px;">
+                        <span id="hrValue">--</span> <span style="font-size:14px; color:var(--text-muted)">BPM</span>
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:13px;">
+                        <div>PR <span id="prValue" style="color:white">--</span>ms</div>
+                        <div>QRS <span id="qrsValue" style="color:white">--</span>ms</div>
+                    </div>
+                </div>
+
+                <!-- 3. Expert Annotation -->
+                <div class="card">
+                    <h3>Expert Annotation</h3>
+                    <p style="font-size: 11px; color: #aaa; margin-bottom: 10px;">
+                        <strong>Method 1:</strong> Right-click a beat to quick-label.<br>
+                        <strong>Method 2:</strong> Left-click multiple beats, select label below, and Apply.
+                    </p>
+
+                    <label style="font-size: 11px; color: var(--text-muted);">Select Diagnosis:</label>
+                    <select id="diagnosis-select" style="margin-bottom: 10px;">
+                        <option value="" disabled selected>Choose Label...</option>
+
+                        <optgroup label="--- Baselines ---">
+                            <option value="Sinus Rhythm">Sinus Rhythm</option>
+                            <option value="Sinus Bradycardia">Sinus Bradycardia</option>
+                            <option value="Sinus Tachycardia">Sinus Tachycardia</option>
+                            <option value="Artifact">Artifact / Noise</option>
+                            <option value="Pause">Significant Pause</option>
+                        </optgroup>
+
+                        <optgroup label="--- Atrial Rhythms ---">
+                            <option value="Atrial Fibrillation">Atrial Fibrillation</option>
+                            <option value="Atrial Flutter">Atrial Flutter</option>
+                            <option value="Supraventricular Tachycardia">SVT (Sustained)</option>
+                            <option value="PSVT">PSVT (Paroxysmal)</option>
+                            <option value="Junctional Rhythm">Junctional Rhythm</option>
+                        </optgroup>
+
+                        <optgroup label="--- Ventricular Rhythms ---">
+                            <option value="Ventricular Tachycardia">Ventricular Tachycardia (VT)</option>
+                            <option value="NSVT">NSVT (Non-Sustained VT)</option>
+                            <option value="Ventricular Fibrillation">Ventricular Fibrillation (VF)</option>
+                            <option value="Idioventricular Rhythm">Idioventricular Rhythm (IVR)</option>
+                        </optgroup>
+
+                        <optgroup label="--- Conduction Blocks ---">
+                            <option value="1st Degree AV Block">1st Degree AV Block</option>
+                            <option value="2nd Degree AV Block Type 1">2nd Degree Type 1 (Wenckebach)</option>
+                            <option value="2nd Degree AV Block Type 2">2nd Degree Type 2 (Mobitz II)</option>
+                            <option value="3rd Degree AV Block">3rd Degree AV Block (Complete)</option>
+                            <option value="Bundle Branch Block">Bundle Branch Block</option>
+                        </optgroup>
+
+                        <optgroup label="--- Ectopy Patterns ---">
+                            <option value="PAC">PAC (Single Atrial Ectopy)</option>
+                            <option value="Atrial Couplet">Atrial Couplet</option>
+                            <option value="Atrial Run">Atrial Run</option>
+                            <option value="PAC Bigeminy">PAC Bigeminy</option>
+                            <hr>
+                            <option value="PVC">PVC (Single Ventricular Ectopy)</option>
+                            <option value="PVC Couplet">Ventricular Couplet</option>
+                            <option value="Ventricular Run">Ventricular Run</option>
+                            <option value="PVC Bigeminy">Ventricular Bigeminy</option>
+                            <option value="PVC Trigeminy">Ventricular Trigeminy</option>
+                        </optgroup>
+
+                        <optgroup label="--- Common Combinations ---">
+                            <option value="Sinus Bradycardia + PVC">Bradicardia + PVC</option>
+                            <option value="Sinus Tachycardia + PVC">Tachycardia + PVC</option>
+                            <option value="Atrial Fibrillation + PVC">AFib + PVC</option>
+                            <option value="1st Degree AV Block + PVC">1st Degree Block + PVC</option>
+                        </optgroup>
+                    </select>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 10px;">
+                        <button id="apply-batch-btn"
+                            style="background: var(--accent-primary); color: black; font-weight: bold;">Apply
+                            Batch</button>
+                        <button id="clear-selection-btn" style="background: #666; color: white;">Clear Sel</button>
+                        <button id="clear-all-annotations-btn"
+                            style="background: #444; color: #ff6666; font-size: 11px; border: 1px solid #ff444455;"
+                            onmouseover="this.style.background='#555'" onmouseout="this.style.background='#444'">
+                            🗑️ CLEAR ALL
+                        </button>
+                    </div>
+
+                    <button id="verify-btn"
+                        style="width: 100%; padding: 12px; background: rgba(0, 255, 153, 0.2); border: 2px solid var(--accent-secondary); color: var(--accent-secondary); font-weight: bold; font-size: 14px; border-radius: 8px; cursor: pointer; transition: all 0.2s; margin-top: 5px;"
+                        onmouseover="this.style.background='rgba(0, 255, 153, 0.3)'"
+                        onmouseout="this.style.background='rgba(0, 255, 153, 0.2)'">
+                        ✅ VERIFY SEGMENT
+                    </button>
+                </div>
+
+                <!-- 4. Clinical XAI -->
+                <div class="card">
+                    <h3>Reasoning Ledger</h3>
+                    <div id="xaiText" style="font-size:12px; line-height:1.5; color:#ccc;">(Analyze to populate)
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Inspector -->
+        <div id="inspectorModal" class="glass-panel">
+            <span class="close-btn" onclick="document.getElementById('inspectorModal').style.display='none'">✕</span>
+            <h2 id="inspectTitle" style="margin:0; color:var(--accent-primary);">Event Detail</h2>
+            <div id="inspectorContent" style="margin-top:20px;"></div>
+        </div>
+
+        <!-- Right-Click Context Menu -->
+        <div id="beat-context-menu"
+            style="display: none; position: absolute; z-index: 1000; background: #2b2b2b; border: 1px solid #555; box-shadow: 2px 2px 10px rgba(0,0,0,0.5); padding: 5px; border-radius: 4px; min-width: 150px;">
+            <div
+                style="padding: 5px 10px; color: #888; font-size: 11px; border-bottom: 1px solid #444; margin-bottom: 5px;">
+                Beat #<span id="ctx-beat-index">0</span>
+            </div>
+
+            <div id="ctx-add-beat" class="ctx-item" style="color: #00ff99; display:none;" onclick="addManualBeat()">➕
+                Add Beat Here</div>
+            <div id="ctx-sep-top" style="border-top: 1px solid #444; margin: 5px 0; display:none;"></div>
+
+            <div class="ctx-item" onclick="quickLabel('PVC')">🔴 Mark as PVC</div>
+            <div class="ctx-item" onclick="quickLabel('PAC')">🟡 Mark as PAC</div>
+            <div class="ctx-item" onclick="quickLabel('Sinus Rhythm')">🟢 Mark Normal</div>
+            <div class="ctx-item" onclick="quickLabel('Artifact')">⚪ Mark Artifact</div>
+
+            <div style="border-top: 1px solid #444; margin: 5px 0;"></div>
+            <div id="ctx-clear" class="ctx-item" style="color: #ff4444; display: none;" onclick="clearAnnotation()">❌
+                Clear Annotation</div>
+            <div style="border-top: 1px solid #444; margin: 5px 0;"></div>
+
+            <div class="ctx-item" style="color: #aaa;"
+                onclick="document.getElementById('beat-context-menu').style.display='none'">✕ Close</div>
+        </div>
+
+        <style>
+            .ctx-item {
+                padding: 8px 12px;
+                cursor: pointer;
+                color: rgb(238, 101, 101);
+                font-size: 13px;
+                transition: background 0.1s;
+            }
+
+            .ctx-item:hover {
+                background-color: var(--accent-secondary);
+                color: black;
+            }
+        </style>
+
+        <script>
+            var INITIAL_SEGMENT_ID = {{ initial_segment_id }};
+            var TARGET_FS = {{ TARGET_FS }};
+
+            let currentSegment = INITIAL_SEGMENT_ID;
+            let ecgSignal = [];
+            let rPeaks = [];
+            let currentDecision = null;
+            let viewStart = 0;
+            let viewEnd = 0;
+            let dpr = window.devicePixelRatio || 1;
+
+            // Selection State
+            let selectedBeats = []; // Stores relative indices (samples) of R-peaks
+            let rightClickedBeatIdx = -1;
+            let rightClickedEventId = null;
+
+            const canvas = document.getElementById("ecgCanvas");
+            const ctx = canvas.getContext("2d");
+
+            async function loadSegment(id) {
+                currentSegment = id;
+                document.getElementById("segmentID").innerText = id;
+                const res = await fetch(`/api/segment/${id}`);
+                const data = await res.json();
+
+                ecgSignal = data.raw_signal || [];
+                rPeaks = (data.r_peaks || "").split(",").map(Number).filter(n => !isNaN(n));
+
+                // Basic Vitals from Meta
+                document.getElementById("hrValue").innerText = data.mean_hr ? data.mean_hr.toFixed(0) : "--";
+                document.getElementById("prValue").innerText = data.pr_interval ? data.pr_interval.toFixed(0) : "--";
+                document.getElementById("qrsValue").innerText = data.qrs_mean_ms ? data.qrs_mean_ms.toFixed(0) : "--";
+
+                viewStart = 0;
+                viewEnd = ecgSignal.length - 1;
+
+                // Reset decision state
+                currentDecision = null;
+                selectedBeats = [];
+                updateSelectionCount();
+
+                document.getElementById("overlayWarmup").classList.remove("visible");
+                document.getElementById("overlayUnreliable").classList.remove("visible");
+                document.getElementById("suppressedPanel").innerHTML = "";
+                document.getElementById("xaiText").innerText = "Analyzing...";
+
+                document.getElementById("xaiText").innerText = "Analyzing...";
+
+                // Update Header Verified Icon
+                const headerIcon = document.getElementById("header-verified-icon");
+                // Check if segment is in sidebar and has status 'confirmed'
+                const sidebarRow = document.getElementById(`row-${id}`);
+                const isVerified = sidebarRow ? sidebarRow.querySelector('.badge-success').style.display !== 'none' : false;
+                headerIcon.style.display = isVerified ? 'inline' : 'none';
+
+                redraw();
+                runAnalysis();
+            }
+
+            function goToSegmentInput() {
+                const val = document.getElementById('search-segment-id').value;
+                if (!val) return;
+                loadSegment(parseInt(val));
+            }
+
+            async function runAnalysis() {
+                const res = await fetch(`/api/xai/${currentSegment}`);
+                const data = await res.json();
+                console.log("XAI Result:", data);
+                currentDecision = data;
+
+                // Update States
+                document.getElementById("overlayWarmup").classList.toggle("visible", data.segment_state === "WARMUP");
+                document.getElementById("overlayUnreliable").classList.toggle("visible", data.segment_state === "UNRELIABLE");
+
+                // Labels
+                document.getElementById("backgroundLabel").innerText = "Background: " + data.background_rhythm;
+                document.getElementById("xaiText").innerHTML = (data.explanation || "").replace(/\n/g, "<br>");
+
+                const displayEvents = data.final_display_events || [];
+                if (displayEvents.length > 0) {
+                    document.getElementById("arrLabel").innerText = displayEvents[0].event_type;
+                    document.getElementById("arrLabel").style.color = displayEvents[0].event_category === "ECTOPY" ? "#ff4444" : "var(--accent-secondary)";
+                } else {
+                    document.getElementById("arrLabel").innerText = data.background_rhythm;
+                    document.getElementById("arrLabel").style.color = "white";
+                }
+
+                // Suppressed Panel
+                const panel = document.getElementById("suppressedPanel");
+                panel.innerHTML = "";
+                (data.events || []).filter(e => e.display_state === "HIDDEN").forEach(e => {
+                    const div = document.createElement("div");
+                    div.className = "suppressed-card";
+                    div.innerHTML = `<b>${e.event_type}</b><br><span style="font-size:10px; opacity:0.6;">Suppressed by: ${e.suppressed_by}</span>`;
+                    div.onclick = () => inspectEvent(e);
+                    panel.appendChild(div);
+                });
+
+                redraw();
+            }
+
+            function resizeCanvas() {
+                const rect = canvas.getBoundingClientRect();
+                dpr = window.devicePixelRatio || 1;
+
+                // Set physical pixels
+                canvas.width = rect.width * dpr;
+                canvas.height = rect.height * dpr;
+
+                // Scale context back to CSS pixels
+                ctx.scale(dpr, dpr);
+
+                redraw();
+            }
+
+            window.addEventListener('resize', resizeCanvas);
+
+            function redraw() {
+                if (!ecgSignal.length) return;
+
+                // Clear using CSS dimensions since we used ctx.scale
+                const w = canvas.width / dpr;
+                const h = canvas.height / dpr;
+                ctx.clearRect(0, 0, w, h);
+
+                const start = Math.floor(viewStart);
+                const end = Math.ceil(viewEnd);
+                const visible = ecgSignal.slice(start, end + 1);
+
+                // AutoScale Y
+                const min = Math.min(...visible);
+                const max = Math.max(...visible);
+                const range = Math.max(max - min, 1.0);
+                const mid = (min + max) / 2;
+                const scaleY = (h - 100) / range;
+
+                // Draw Trace
+                ctx.strokeStyle = "#000000";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                for (let i = 0; i < visible.length; i++) {
+                    const x = (i / (visible.length - 1)) * w;
+                    const y = h / 2 - (visible[i] - mid) * scaleY;
+                    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+
+                // Draw R Peaks
+                ctx.fillStyle = "#ff4444";
+                rPeaks.forEach(idx => {
+                    if (idx >= start && idx <= end) {
+                        const x = ((idx - start) / (visible.length - 1)) * w;
+                        const y = h / 2 - (ecgSignal[idx] - mid) * scaleY;
+                        ctx.fillRect(Math.round(x) - 2, Math.round(y) - 20, 4, 10);
+                    }
+                });
+
+                // Draw Selected Beat Highlights (±150 samples visually)
+                ctx.fillStyle = "rgba(255, 0, 0, 0.25)";
+                ctx.strokeStyle = "red";
+                ctx.setLineDash([]);
+                selectedBeats.forEach(idx => {
+                    const sIdx = idx - 150;
+                    const eIdx = idx + 150;
+                    if (eIdx < start || sIdx > end) return;
+
+                    const xS = Math.max(0, ((sIdx - start) / (visible.length - 1)) * w);
+                    const xE = Math.min(w, ((eIdx - start) / (visible.length - 1)) * w);
+
+                    ctx.fillRect(xS, 0, xE - xS, h);
+                    ctx.strokeRect(xS, 0, xE - xS, h);
+                });
+
+                // Draw Existing Events
+                if (currentDecision && currentDecision.final_display_events) {
+                    currentDecision.final_display_events.forEach(e => {
+                        const sIdx = e.start_time * TARGET_FS;
+                        const eIdx = e.end_time * TARGET_FS;
+                        // Calculate center of the event (peak)
+                        const peakIdx = (sIdx + eIdx) / 2;
+
+                        if (peakIdx < start || peakIdx > end) return;
+
+                        const x = ((peakIdx - start) / (visible.length - 1)) * w;
+
+                        ctx.beginPath();
+                        ctx.moveTo(x, 0);
+                        ctx.lineTo(x, h);
+
+                        if (e.annotation_source === "cardiologist") {
+                            // Manual Annotation: Thick, distinct dotted line
+                            ctx.lineWidth = 3;
+                            ctx.setLineDash([4, 4]); // Clear dots
+
+                            // Color code based on type even for manual
+                            if (e.event_type.includes("PVC")) ctx.strokeStyle = "red";
+                            else if (e.event_type.includes("PAC")) ctx.strokeStyle = "#ffcc00"; // Gold/Orange
+                            else if (e.event_type.includes("Sinus")) ctx.strokeStyle = "#00ff00"; // Green
+                            else ctx.strokeStyle = "#ff00ff"; // Magenta default
+
+                        } else {
+                            // AI Annotation: Thinner, different dash
+                            ctx.lineWidth = 1;
+                            ctx.setLineDash([2, 2]);
+                            ctx.strokeStyle = e.event_category === "ECTOPY" ? "red" : "cyan";
+                        }
+
+                        ctx.stroke();
+                        ctx.setLineDash([]); // Reset
+                        ctx.lineWidth = 1;
+
+                        // Label at top
+                        ctx.fillStyle = ctx.strokeStyle;
+                        ctx.font = "bold 12px sans-serif";
+                        ctx.fillText(e.event_type, x + 4, 15);
+
+                        // Small marker at bottom of line
+                        ctx.beginPath();
+                        ctx.arc(x, h - 5, 3, 0, 2 * Math.PI);
+                        ctx.fill();
+                    });
+                }
+            }
+
+            function inspectEvent(e) {
+                const modal = document.getElementById("inspectorModal");
+                const content = document.getElementById("inspectorContent");
+                document.getElementById("inspectTitle").innerText = e.event_type;
+                content.innerHTML = `
+                <div class="inspect-row"><div class="inspect-label">Time</div><div class="inspect-value">${e.start_time.toFixed(1)}s - ${e.end_time.toFixed(1)}s</div></div>
+                <div class="inspect-row"><div class="inspect-label">Suppressed By</div><div class="inspect-value">${e.suppressed_by || 'None'}</div></div>
+                <div class="inspect-row"><div class="inspect-label">Category</div><div class="inspect-value">${e.event_category}</div></div>
+                <div class="inspect-row"><div class="inspect-label">Used for Training</div><div class="inspect-value">${e.used_for_training}</div></div>
+            `;
+                modal.style.display = "block";
+            }
+
+            function updateSelectionCount() {
+                const countSpan = document.getElementById("selected-count");
+                if (countSpan) countSpan.innerText = selectedBeats.length;
+            }
+
+            // Left Click: Toggle Selection
+            canvas.addEventListener("click", function (e) {
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+
+                const startIdx = Math.floor(viewStart);
+                const visibleLen = Math.ceil(viewEnd) - startIdx + 1;
+                const w = rect.width;
+                const clickedSampleIdx = startIdx + (x / w) * (visibleLen - 1);
+
+                let closestPeak = null;
+                let minDistance = 50;
+
+                rPeaks.forEach(peak => {
+                    const dist = Math.abs(peak - clickedSampleIdx);
+                    if (dist < minDistance) {
+                        minDistance = dist;
+                        closestPeak = peak;
+                    }
+                });
+
+                if (closestPeak !== null) {
+                    if (selectedBeats.includes(closestPeak)) {
+                        selectedBeats = selectedBeats.filter(p => p !== closestPeak);
+                    } else {
+                        selectedBeats.push(closestPeak);
+                    }
+                    updateSelectionCount();
+                    redraw();
+                }
+            });
+
+            // Right Click: Context Menu
+            canvas.addEventListener('contextmenu', function (e) {
+                e.preventDefault();
+
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const startIdx = Math.floor(viewStart);
+                const visibleLen = Math.ceil(viewEnd) - startIdx + 1;
+                const clickSample = startIdx + (x / rect.width) * (visibleLen - 1);
+                window.lastClickSample = clickSample; // For manual add
+
+                let closestDist = 50;
+                let closestIdx = -1;
+
+                rPeaks.forEach((peakSample) => {
+                    const dist = Math.abs(peakSample - clickSample);
+                    if (dist < closestDist) {
+                        closestDist = dist;
+                        closestIdx = peakSample;
+                    }
+                });
+
+                const menu = document.getElementById('beat-context-menu');
+                menu.style.display = 'block';
+                menu.style.left = e.pageX + 'px';
+                menu.style.top = e.pageY + 'px';
+
+                if (closestIdx !== -1) {
+                    rightClickedBeatIdx = closestIdx;
+
+                    // Check if there is an existing event here
+                    rightClickedEventId = null;
+                    if (currentDecision && currentDecision.final_display_events) {
+                        const evt = currentDecision.final_display_events.find(e => {
+                            const center = (e.start_time * TARGET_FS + e.end_time * TARGET_FS) / 2;
+                            return Math.abs(center - closestIdx) < 20; // 20 sample tolerance
+                        });
+                        if (evt) rightClickedEventId = evt.event_id;
+                    }
+
+                    document.getElementById('ctx-beat-index').innerText = rPeaks.indexOf(closestIdx);
+                    document.getElementById('ctx-add-beat').style.display = 'none';
+                    document.getElementById('ctx-sep-top').style.display = 'none';
+
+                    // Show/Hide Clear Option
+                    document.getElementById('ctx-clear').style.display = rightClickedEventId ? 'block' : 'none';
+                } else {
+                    // No near peak - Allow "Add Beat"
+                    rightClickedBeatIdx = -1;
+                    document.getElementById('ctx-beat-index').innerText = "None";
+                    document.getElementById('ctx-add-beat').style.display = 'block';
+                    document.getElementById('ctx-sep-top').style.display = 'block';
+                    document.getElementById('ctx-clear').style.display = 'none';
+                }
+            });
+
+            // Hide menu on click elsewhere
+            document.addEventListener('click', function (e) {
+                const menu = document.getElementById('beat-context-menu');
+                if (menu) menu.style.display = 'none';
+            });
+
+            // Quick Label Logic
+            function quickLabel(label) {
+                if (rightClickedBeatIdx === -1) return;
+                saveAnnotation([rightClickedBeatIdx], label);
+            }
+
+            async function addManualBeat() {
+                if (!window.lastClickSample) return;
+
+                const newPeak = Math.round(window.lastClickSample);
+                rPeaks.push(newPeak);
+                rPeaks.sort((a, b) => a - b);
+
+                const res = await fetch("/api/update_rpeaks", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ segment_id: currentSegment, r_peaks: rPeaks })
+                });
+
+                if (res.ok) {
+                    // Re-load to ensure everything is consistent
+                    loadSegment(currentSegment);
+                } else {
+                    alert("Failed to save peak.");
+                }
+                document.getElementById('beat-context-menu').style.display = 'none';
+            }
+
+            async function clearAnnotation() {
+                if (!rightClickedEventId) return;
+
+                const res = await fetch("/api/delete_annotation", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ segment_id: currentSegment, event_id: rightClickedEventId })
+                });
+
+                if (res.ok) {
+                    // Toast
+                    const toast = document.createElement("div");
+                    toast.innerText = `🗑️ Annotation Deleted`;
+                    toast.style.cssText = "position:fixed; bottom:20px; right:20px; background:rgba(255, 68, 68, 0.9); color:white; padding:15px; border-radius:8px; z-index:9999; font-weight:bold;";
+                    document.body.appendChild(toast);
+                    setTimeout(() => toast.remove(), 3000);
+
+                    // Re-evaluate verification status? 
+                    // For now, if we delete, we might still be verified if other events exist.
+                    // Ideally we should check if events list is empty. 
+                    // But for simplicity, we don't auto-unverify on delete unless we reload status.
+                    // Let's reload sidebad status via a fetch if needed, 
+                    // or just reload the segment entirely to be safe:
+                    loadSegment(currentSegment);
+                } else {
+                    alert("Failed to delete annotation.");
+                }
+            }
+
+            // Batch Apply Logic
+            document.getElementById("apply-batch-btn").onclick = function () {
+                if (selectedBeats.length === 0) {
+                    alert("Please select beats first (Left-Click them).");
+                    return;
+                }
+                const label = document.getElementById('diagnosis-select').value;
+                if (!label) {
+                    alert("Please select a diagnosis from the dropdown.");
+                    return;
+                }
+                saveAnnotation(selectedBeats, label);
+            };
+
+            document.getElementById("clear-selection-btn").onclick = () => {
+                selectedBeats = [];
+                updateSelectionCount();
+                redraw();
+            };
+
+            // Shared Save Function
+            async function saveAnnotation(indices, label) {
+                const payload = {
+                    segment_id: currentSegment,
+                    beat_indices: indices,
+                    label: label
+                };
+
+                const res = await fetch("/api/annotate_beats", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    // 1. Show Success Message (Toast)
+                    const toast = document.createElement("div");
+                    toast.innerText = `✅ Saved ${indices.length} beats as ${label}`;
+                    toast.style.cssText = "position:fixed; bottom:20px; right:20px; background:rgba(0, 255, 153, 0.9); color:black; padding:15px; border-radius:8px; z-index:9999; font-weight:bold; box-shadow: 0 0 20px rgba(0,255,153,0.3);";
+                    document.body.appendChild(toast);
+                    setTimeout(() => toast.remove(), 3000);
+
+                    // 2. Clear UI Selection
+                    selectedBeats = [];
+                    updateSelectionCount();
+                    runAnalysis(); // Refresh
+                } else {
+                    alert("Failed to save annotation.");
+                }
+            }
+
+            window.onload = () => {
+                resizeCanvas();
+                loadSegment(INITIAL_SEGMENT_ID);
+            };
+
+            document.getElementById("nextBtn").onclick = async () => {
+                const res = await fetch(`/api/next_segment/${currentSegment}`);
+                const d = await res.json();
+                if (d.ok) loadSegment(d.next);
+            };
+            document.getElementById("prevBtn").onclick = async () => {
+                const res = await fetch(`/api/prev_segment/${currentSegment}`);
+                const d = await res.json();
+                if (d.ok) loadSegment(d.prev);
+            };
+            document.getElementById("analyzeBtn").onclick = () => runAnalysis();
+
+            async function verifySegment() {
+                const label = document.getElementById('diagnosis-select').value;
+                const payload = {
+                    segment_id: currentSegment,
+                    background_rhythm: label || "Sinus Rhythm"
+                };
+
+                const res = await fetch("/api/verify_segment", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    // Success Toast
+                    const toast = document.createElement("div");
+                    toast.innerText = `✅ Segment Verified!`;
+                    toast.style.cssText = "position:fixed; bottom:20px; right:20px; background:rgba(0, 255, 153, 0.9); color:black; padding:15px; border-radius:8px; z-index:9999; font-weight:bold; box-shadow: 0 0 20px rgba(0,255,153,0.3);";
+                    document.body.appendChild(toast);
+                    setTimeout(() => toast.remove(), 3000);
+
+                    // Update Sidebar
+                    const badge = document.getElementById(`status-badge-${currentSegment}`);
+                    if (badge) badge.style.display = 'inline-block';
+                    const pending = document.getElementById(`pending-badge-${currentSegment}`);
+                    if (pending) pending.style.display = 'none';
+
+                    // Update Header Icon
+                    document.getElementById("header-verified-icon").style.display = 'inline';
+
+                    runAnalysis();
+                } else {
+                    alert("Verification failed.");
+                }
+            }
+
+            document.getElementById("verify-btn").onclick = verifySegment;
+
+            async function clearAllAnnotations() {
+                if (!confirm("Are you sure you want to PERMANENTLY clear all manual annotations for this segment?")) return;
+
+                const res = await fetch("/api/clear_all_annotations", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ segment_id: currentSegment })
+                });
+
+                if (res.ok) {
+                    const toast = document.createElement("div");
+                    toast.innerText = `🗑️ All Annotations Cleared`;
+                    toast.style.cssText = "position:fixed; bottom:20px; right:20px; background:rgba(255, 68, 68, 0.9); color:white; padding:15px; border-radius:8px; z-index:9999; font-weight:bold;";
+                    document.body.appendChild(toast);
+                    setTimeout(() => toast.remove(), 3000);
+
+                    // Reset Sidebar
+                    const badge = document.getElementById(`status-badge-${currentSegment}`);
+                    if (badge) badge.style.display = 'none';
+                    const pending = document.getElementById(`pending-badge-${currentSegment}`);
+                    if (pending) pending.style.display = 'inline-block';
+
+                    // Update Header
+                    document.getElementById("header-verified-icon").style.display = 'none';
+
+                    loadSegment(currentSegment); // Full Reload
+                } else {
+                    alert("Failed to clear annotations.");
+                }
+            }
+
+            document.getElementById("clear-all-annotations-btn").onclick = clearAllAnnotations;
+
+            // Update active class on sidebar
+            function updateSidebarActive(id) {
+                document.querySelectorAll('.segment-row').forEach(row => row.classList.remove('active'));
+                const activeRow = document.getElementById(`row-${id}`);
+                if (activeRow) activeRow.classList.add('active');
+            }
+
+            // Wrap loadSegment to update sidebar
+            const originalLoadSegment = loadSegment;
+            loadSegment = async function (id) {
+                await originalLoadSegment(id);
+                updateSidebarActive(id);
+            };
+        </script>
+</body>
+
+</html>
