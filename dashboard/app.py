@@ -11,7 +11,7 @@ sys.path.append(str(BASE_DIR / "database"))
 sys.path.append(str(BASE_DIR / "xai"))
 sys.path.append(str(BASE_DIR / "models_training"))
 
-import db_service
+from database import db_service
 import json
 import numpy as np
 import pandas as pd
@@ -28,7 +28,7 @@ import subprocess
 from xai import explain_segment, explain_decision, reset_model
 from decision_engine.rhythm_orchestrator import RhythmOrchestrator
 from decision_engine.models import SegmentDecision
-from data_loader import CLASS_NAMES, RHYTHM_CLASS_NAMES, ECTOPY_CLASS_NAMES
+from models_training.data_loader import CLASS_NAMES, RHYTHM_CLASS_NAMES, ECTOPY_CLASS_NAMES
 
 # Suppress harmless scipy warnings
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -448,28 +448,15 @@ def process_and_save_record(file_path: Path) -> str:
                 ]
                 seg_r_peaks_rel = seg_r_peaks_abs - start
 
-                feats = _extract_segment_features(segment, seg_r_peaks_rel, i)
-                feats_clean = _sanitize_features(feats)
-                rpeaks_str = ",".join(map(str, seg_r_peaks_rel))
-                segment_start_s = start / TARGET_FS
-
+                # Push raw_signal and segment_fs into ecg_features_annotatable
                 cur.execute(
                     """
-                    INSERT INTO ecg_features_annotatable
-                    (filename, segment_index, segment_start_s, segment_duration_s,
-                     r_peaks_in_segment, features_json)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (filename, segment_index) DO NOTHING
+                    INSERT INTO ecg_features_annotatable (raw_signal, segment_fs)
+                    VALUES (%s, %s)
                     """,
-                    (
-                        filename_key,
-                        i,
-                        segment_start_s,
-                        SEGMENT_DURATION_S,
-                        rpeaks_str,
-                        json.dumps(feats_clean),
-                    ),
+                    (raw_signal.tolist(), original_fs)
                 )
+
         conn.commit()
         return filename_key
 
@@ -735,23 +722,32 @@ def get_segment_api(segment_id: int):
     if np.isnan(qrs_mean_ms): qrs_mean_ms = 0.0
     if np.isnan(pr_interval_ms): pr_interval_ms = 0.0
 
+    # constructing structured response for frontend
+    vitals = {
+        "bpm": round(mean_hr, 1),
+        "pr_interval": round(pr_interval_ms, 0),
+        "qrs_duration": round(qrs_mean_ms, 0)
+    }
+
+    labels = {
+        "ai_prediction": meta.get("arrhythmia_label") or "Unlabeled",
+        "imported_label": meta.get("dataset_source") or "Unknown"
+    }
+
     return jsonify(
         {
-            "segment_id": segment_id,  # use the route arg directly (not in meta dict)
+            "segment_id": segment_id,
             "filename": meta["filename"],
             "segment_index": meta["segment_index"],
             "raw_signal": raw_signal,
-            "fs": seg_fs,            # per-segment fs from DB — used by JS for coordinate scaling
+            "fs": seg_fs,
             "length": len(raw_signal),
-            "arrhythmia_label": meta.get("arrhythmia_label"),
-            "notes": meta.get("cardiologist_notes") or meta.get("arrhythmia_text_notes") or "",
-            "features": features,
-            "mean_hr": mean_hr,
-            "pr_interval": float(pr_interval_ms),
-            "qrs_mean_ms": float(qrs_mean_ms),
+            "vitals": vitals,
+            "labels": labels,
             "r_peaks": r_peaks_for_frontend,
+            "notes": meta.get("cardiologist_notes") or "",
             "corrected_by": meta.get("corrected_by"),
-            "corrected_at": meta.get("corrected_at"),
+            "corrected_at": meta.get("corrected_at")
         }
     )
 

@@ -38,6 +38,53 @@
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
         }
 
+        .conclusion-panel {
+            background: rgba(20, 20, 20, 0.6);
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 15px;
+            height: clamp(100px, 15vh, 180px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .primary-label {
+            font-size: clamp(24px, 3vw, 42px);
+            font-weight: 800;
+            margin: 0;
+            color: #00ffd0;
+            text-shadow: 0 0 10px rgba(0, 255, 208, 0.3);
+        }
+
+        .badge-group {
+            margin-bottom: 8px;
+        }
+
+        .badge-label {
+            font-size: 10px;
+            font-weight: bold;
+            color: #888;
+            letter-spacing: 1px;
+            display: block;
+            margin-bottom: 2px;
+        }
+
+        .badge-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .ai-suggestion {
+            color: #00ffd0;
+        }
+
+        .imported-label {
+            color: #888;
+            font-style: italic;
+        }
+
         #topBar {
             background: rgba(20, 20, 20, 0.8);
             padding: 10px 20px;
@@ -458,8 +505,15 @@
                 <div class="ecg-background" style="width: 100%; height: 100%; position: relative;">
                     <canvas id="ecgCanvas"></canvas>
 
-                    <div id="overlayWarmup" class="state-overlay overlay-warmup">
-                        <div class="overlay-msg">System Initializing...</div>
+                    <div class="conclusion-panel">
+                        <div class="badge-group">
+                            <span class="badge-label">AI SUGGESTION</span>
+                            <div id="ui-ai-pred" class="badge-value ai-suggestion">Analyzing...</div>
+                        </div>
+                        <div class="badge-group" style="opacity: 0.7;">
+                            <span class="badge-label">IMPORTED LABEL</span>
+                            <div id="ui-db-label" class="badge-value imported-label">---</div>
+                        </div>
                     </div>
                     <div id="overlayUnreliable" class="state-overlay overlay-unreliable">
                         <div class="overlay-msg">Poor Signal Quality</div>
@@ -668,12 +722,23 @@
                 segmentFs = data.fs || TARGET_FS;
                 rPeaks = (data.r_peaks || "").split(",").map(Number).filter(n => !isNaN(n));
 
-                // Basic Vitals from Meta
-                document.getElementById("hrValue").innerText = data.mean_hr ? data.mean_hr.toFixed(0) : "--";
-                document.getElementById("prValue").innerText = data.pr_interval ? data.pr_interval.toFixed(0) : "--";
-                document.getElementById("qrsValue").innerText = data.qrs_mean_ms ? data.qrs_mean_ms.toFixed(0) : "--";
+                // 3. Update Vitals (The Truth Sync)
+                document.getElementById('hrValue').innerText = data.vitals ? data.vitals.bpm : '--';
+                document.getElementById('prValue').innerText = data.vitals ? data.vitals.pr_interval : '--';
+                document.getElementById('qrsValue').innerText = data.vitals ? data.vitals.qrs_duration : '--';
 
-                viewStart = 0;
+                // 4. Update UI Badges (Labels)
+                if (data.labels) {
+                    const aiSpan = document.getElementById("ui-ai-pred");
+                    const dbSpan = document.getElementById("ui-db-label");
+
+                    if (aiSpan) aiSpan.innerText = data.labels.ai_prediction || "Unknown";
+                    if (dbSpan) dbSpan.innerText = data.labels.imported_label || "Unknown";
+                }
+
+                // 5. Update UI state (Reset AI Sug until ledger runs)
+                const aiEl = document.getElementById('ui-ai-pred');
+                if (aiEl) aiEl.innerText = 'Calculating...';
                 viewEnd = ecgSignal.length - 1;
 
                 // Reset decision state
@@ -681,19 +746,24 @@
                 selectedBeats = [];
                 updateSelectionCount();
 
-                document.getElementById("overlayWarmup").classList.remove("visible");
-                document.getElementById("overlayUnreliable").classList.remove("visible");
-                document.getElementById("suppressedPanel").innerHTML = "";
-                document.getElementById("xaiText").innerText = "Analyzing...";
-
-                document.getElementById("xaiText").innerText = "Analyzing...";
+                // Reset UI Overlays
+                const warmupOverlay = document.getElementById("overlayWarmup");
+                if (warmupOverlay) warmupOverlay.classList.remove("visible");
+                const unreliableOverlay = document.getElementById("overlayUnreliable");
+                if (unreliableOverlay) unreliableOverlay.classList.remove("visible");
+                const suppPanel = document.getElementById("suppressedPanel");
+                if (suppPanel) suppPanel.innerHTML = "";
+                const xaiEl = document.getElementById("xaiText");
+                if (xaiEl) xaiEl.innerText = "Analyzing...";
 
                 // Update Header Verified Icon
                 const headerIcon = document.getElementById("header-verified-icon");
-                // Check if segment is in sidebar and has status 'confirmed'
-                const sidebarRow = document.getElementById(`row-${id}`);
-                const isVerified = sidebarRow ? sidebarRow.querySelector('.badge-success').style.display !== 'none' : false;
-                headerIcon.style.display = isVerified ? 'inline' : 'none';
+                if (headerIcon) {
+                    // Check if segment is in sidebar and has status 'confirmed'
+                    const sidebarRow = document.getElementById(`row-${id}`);
+                    const isVerified = sidebarRow ? sidebarRow.querySelector('.badge-success').style.display !== 'none' : false;
+                    headerIcon.style.display = isVerified ? 'inline' : 'none';
+                }
 
                 redraw();
                 runAnalysis();
@@ -712,8 +782,10 @@
                 currentDecision = data;
 
                 // Update States
-                document.getElementById("overlayWarmup").classList.toggle("visible", data.segment_state === "WARMUP");
-                document.getElementById("overlayUnreliable").classList.toggle("visible", data.segment_state === "UNRELIABLE");
+                const warmupOverlay = document.getElementById("overlayWarmup");
+                if (warmupOverlay) warmupOverlay.classList.toggle("visible", data.segment_state === "WARMUP");
+                const unreliableOverlay = document.getElementById("overlayUnreliable");
+                if (unreliableOverlay) unreliableOverlay.classList.toggle("visible", data.segment_state === "UNRELIABLE");
 
                 // Labels
                 document.getElementById("backgroundLabel").innerText = "Background: " + data.background_rhythm;
@@ -727,17 +799,38 @@
                     document.getElementById("arrLabel").innerText = data.background_rhythm;
                     document.getElementById("arrLabel").style.color = "white";
                 }
+                if (data.explanation) {
+                    document.getElementById('xaiText').innerHTML = data.explanation;
+                }
+
+                if (data.ai_suggestion) {
+                    const el = document.getElementById('ui-ai-pred');
+                    if (el) el.innerText = data.ai_suggestion;
+
+                    // Highlight difference
+                    const importedEl = document.getElementById('ui-db-label');
+                    const imported = importedEl ? importedEl.innerText : '---';
+                    if (el) {
+                        if (imported !== '---' && data.ai_suggestion.toUpperCase() !== imported.toUpperCase()) {
+                            el.style.color = '#ffcc00'; // Warning Orange
+                        } else {
+                            el.style.color = '#00ffd0'; // Normal Cyan
+                        }
+                    }
+                }
 
                 // Suppressed Panel
                 const panel = document.getElementById("suppressedPanel");
-                panel.innerHTML = "";
-                (data.events || []).filter(e => e.display_state === "HIDDEN").forEach(e => {
-                    const div = document.createElement("div");
-                    div.className = "suppressed-card";
-                    div.innerHTML = `<b>${e.event_type}</b><br><span style="font-size:10px; opacity:0.6;">Suppressed by: ${e.suppressed_by}</span>`;
-                    div.onclick = () => inspectEvent(e);
-                    panel.appendChild(div);
-                });
+                if (panel) {
+                    panel.innerHTML = "";
+                    (data.events || []).filter(e => e.display_state === "HIDDEN").forEach(e => {
+                        const div = document.createElement("div");
+                        div.className = "suppressed-card";
+                        div.innerHTML = `<b>${e.event_type}</b><br><span style="font-size:10px; opacity:0.6;">Suppressed by: ${e.suppressed_by}</span>`;
+                        div.onclick = () => inspectEvent(e);
+                        panel.appendChild(div);
+                    });
+                }
 
                 redraw();
             }
