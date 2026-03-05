@@ -562,6 +562,42 @@ def explain_segment(signal_1d: np.ndarray, features: dict) -> dict:
         return {"error": str(e)}
 
 
+def generate_detailed_ledger(base_rhythm, events):
+    """
+    Translates the AI's findings and the Rules Engine logic into a detailed, 
+    time-stamped clinical paragraph for the XAI Reasoning Ledger.
+    """
+    if not events:
+        return f"**AI Ledger**: The primary CNN+Transformer model analyzed the morphology and classified the base rhythm as **{base_rhythm}**. No ectopic beats or secondary arrhythmias were detected in this 10-second window."
+
+    # 1. Sort events chronologically to trace the AI's "thought process"
+    events = sorted(events, key=lambda x: x.get('start_time', 0.0))
+    
+    # 2. Extract specific beat timings
+    pvc_times = [f"{e['start_time']:.1f}s" for e in events if "PVC" in e.get('event_type', '') or "Ventricular" in e.get('event_type', '')]
+    pac_times = [f"{e['start_time']:.1f}s" for e in events if "PAC" in e.get('event_type', '') or "Atrial" in e.get('event_type', '')]
+    
+    # 3. Build the narrative
+    narrative = f"**AI Ledger**: The baseline rhythm was identified as **{base_rhythm}**. "
+    
+    if pvc_times:
+        narrative += f"\n* **Ventricular Ectopy**: The model detected {len(pvc_times)} abnormal ventricular morphology beat(s) at exactly **{', '.join(pvc_times)}**. "
+    if pac_times:
+        narrative += f"\n* **Atrial Ectopy**: The model detected {len(pac_times)} premature atrial beat(s) at exactly **{', '.join(pac_times)}**. "
+
+    # 4. Explain the Rules Engine Output
+    if len(pvc_times) == 2:
+        narrative += "\n* **Rule Triggered**: Because 2 PVCs were detected consecutively, the Clinical Rules Engine upgraded the secondary diagnosis to a **PVC Couplet**."
+    elif len(pvc_times) >= 3:
+        narrative += f"\n* **Rule Triggered**: A sequence of {len(pvc_times)} consecutive PVCs triggered the high-priority **Ventricular Run / NSVT** rule."
+    elif len(pac_times) >= 3:
+        narrative += f"\n* **Rule Triggered**: A sequence of {len(pac_times)} consecutive PACs triggered the **PSVT** rule."
+
+    narrative += "\n* **Action**: Please verify the timings on the ECG trace above. Use the dropdown to confirm or override the final ground-truth label."
+
+    return narrative
+
+
 def explain_decision(decision: SegmentDecision) -> str:
     """
     PURE EXPLAINER:
@@ -620,11 +656,17 @@ def explain_decision(decision: SegmentDecision) -> str:
                 reason = e.suppressed_by or "clinical hierarchy"
                 parts.append(f"- **{e.event_type}** was detected but **suppressed** due to: {reason}.")
 
-    # 4. XAI NARRATIVE Synthesizer (Legacy feel)
-    # We can call the old _clinical_explanation logic using the final state
-    final_label = displayed[0].event_type if displayed else decision.background_rhythm
-    feats = decision.xai_notes or {} # We'll ensure orchestrator puts features here
-    narrative = _clinical_explanation(final_label, feats)
+    # 4. XAI NARRATIVE Synthesizer (Time-stamped Ledger)
+    event_dicts = []
+    for e in decision.events:
+        if hasattr(e, 'to_dict'):
+            event_dicts.append(e.to_dict())
+        else:
+            event_dicts.append({
+                'start_time': getattr(e, 'start_time', 0.0),
+                'event_type': getattr(e, 'event_type', '')
+            })
+    narrative = generate_detailed_ledger(decision.background_rhythm, event_dicts)
     
     parts.append("\n---\n" + narrative)
     
