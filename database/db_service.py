@@ -445,13 +445,12 @@ def update_segment_status(segment_id: int, background_rhythm: str = 'Unlabeled',
             cur.execute("""
                 UPDATE ecg_features_annotatable 
                 SET arrhythmia_label = %s,
-                    events_json = %s,
                     cardiologist_notes = %s,
                     is_corrected = TRUE,
-                    used_for_training = FALSE,
+                    used_for_training = TRUE,
                     corrected_at = CURRENT_TIMESTAMP
                 WHERE segment_id = %s
-            """, (background_rhythm, events_json_str, notes, segment_id))
+            """, (background_rhythm, notes, segment_id))
             
         conn.commit()
         return True
@@ -467,10 +466,11 @@ def clear_all_annotations(segment_id: int) -> bool:
     conn = _connect()
     try:
         with conn.cursor() as cur:
+            # We ONLY reset the manual markers and training flags. 
+            # We DO NOT overwrite the arrhythmia_label with "Unlabeled"!
             cur.execute("""
                 UPDATE ecg_features_annotatable 
                 SET events_json = '[]'::jsonb, 
-                    arrhythmia_label = 'Unlabeled',
                     cardiologist_notes = '',
                     is_corrected = FALSE,
                     used_for_training = FALSE,

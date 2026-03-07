@@ -145,10 +145,9 @@ class ECGEventDataset(torch.utils.data.Dataset):
             with conn.cursor() as cur:
                 # [FIX 7] signal IS NOT NULL guard in the query itself
                 cur.execute("""
-                    SELECT segment_id, signal_data, events_json, segment_fs, filename
+                    SELECT segment_id, signal_data, events_json, arrhythmia_label, segment_fs, filename, is_corrected
                     FROM   ecg_features_annotatable
                     WHERE  signal_data IS NOT NULL
-                      AND  events_json IS NOT NULL
                 """)
                 rows = cur.fetchall()
 
@@ -156,7 +155,7 @@ class ECGEventDataset(torch.utils.data.Dataset):
 
         skipped_null, skipped_short, skipped_label, total_windows = 0, 0, 0, 0
 
-        for seg_id, signal_raw, events_json_raw, fs, filename in rows:
+        for seg_id, signal_raw, events_json_raw, arrhythmia_label, fs, filename, is_corrected in rows:
 
             # Parse signal
             try:
@@ -189,7 +188,25 @@ class ECGEventDataset(torch.utils.data.Dataset):
             elif isinstance(ev_data, dict):
                 events = ev_data.get("events", [])
             else:
-                continue
+                events = []
+
+            # [NEW] For Rhythm task, if it's corrected by a human, use the arrhythmia_label (dropdown)
+            # as a 10-second global rhythm event.
+            if self.task == "rhythm" and is_corrected and arrhythmia_label:
+                # Check if we already have a rhythm event to avoid doubles
+                has_existing_rhythm = any(ev.get("event_category") == "RHYTHM" for ev in events)
+                if not has_existing_rhythm:
+                    label_idx = get_rhythm_label_idx(arrhythmia_label)
+                    if label_idx is not None:
+                        # Slide windows across the full 10s segment
+                        windows = self._slide_windows(signal, 0.0, 10.0, fs)
+                        for win in windows:
+                            if win is not None:
+                                self.samples.append((
+                                    win, label_idx, "cardiologist",
+                                    seg_id, filename or ""
+                                ))
+                                total_windows += 1
 
             for event in events:
                 # [FIX 9] Safe access everywhere
@@ -207,8 +224,12 @@ class ECGEventDataset(torch.utils.data.Dataset):
 
                 # Resolve label
                 if self.task == "rhythm":
+                    # Skip if it's an ectopy event during a rhythm task
+                    if event.get("event_category") == "ECTOPY": continue
                     label_idx = get_rhythm_label_idx(event_type)
                 else:
+                    # Skip if it's a rhythm event during an ectopy task
+                    if event.get("event_category") == "RHYTHM": continue
                     label_idx = get_ectopy_label_idx(event_type)
 
                 if label_idx is None:

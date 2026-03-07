@@ -526,7 +526,12 @@
             <div id="infoArea">
                 <!-- 1. Decision -->
                 <div class="card">
-                    <h3>Primary Conclusion</h3>
+                    <h3 style="display: flex; align-items: center; justify-content: space-between;">
+                        Primary Conclusion
+                        <span
+                            style="font-size: 10px; color: #00ff99; border: 1px solid #00ff99; border-radius: 4px; padding: 2px 6px; font-weight: bold; letter-spacing: 1px;">AI
+                            ENGINE</span>
+                    </h3>
                     <div id="arrLabel" style="font-size:20px; font-weight:bold; color:white; margin-bottom:10px;">--
                     </div>
                     <div id="backgroundLabel" style="font-size:13px; color:var(--text-muted);">Background: --</div>
@@ -726,7 +731,7 @@
                 rPeaks = (data.r_peaks || "").split(",").map(Number).filter(n => !isNaN(n));
 
                 // 3. Update Vitals (The Truth Sync)
-                const liveBPM = (data.vitals && data.vitals.bpm) ? data.vitals.bpm : '--';
+                const liveBPM = (data.vitals && data.vitals.bpm) ? Math.round(data.vitals.bpm) : '--';
                 document.getElementById('hrValue').innerText = liveBPM;
                 document.getElementById('prValue').innerText = data.vitals ? data.vitals.pr_interval : '--';
                 document.getElementById('qrsValue').innerText = data.vitals ? data.vitals.qrs_duration : '--';
@@ -736,13 +741,29 @@
                     const aiSpan = document.getElementById("ui-ai-pred");
                     const dbSpan = document.getElementById("ui-db-label");
 
-                    if (aiSpan) aiSpan.innerText = data.labels.ai_prediction || "Unknown";
-                    if (dbSpan) dbSpan.innerText = data.labels.imported_label || "Unknown";
+                    if (aiSpan && data.labels.ai_prediction && data.labels.ai_prediction !== "Unlabeled") {
+                        aiSpan.innerText = `AI Deduction: ${data.labels.ai_prediction}`;
+                        aiSpan.style.color = "#ffffff";
+                    }
+
+                    if (dbSpan) {
+                        dbSpan.innerText = data.labels.imported_label || "Unknown";
+                    }
                 }
 
-                // 5. Update UI state (Reset AI Sug until ledger runs)
-                const aiEl = document.getElementById('ui-ai-pred');
-                if (aiEl) aiEl.innerText = 'Calculating...';
+                // Update secondary background inference text
+                const backgroundText = document.getElementById("backgroundLabel");
+                if (backgroundText && data.background_rhythm) {
+                    backgroundText.innerText = `Background: ${data.background_rhythm}`;
+                }
+
+                // Reset Primary Dropdown to match background, without triggering save
+                const diagnosisSelect = document.getElementById("diagnosis-select");
+                if (diagnosisSelect && data.labels.ai_prediction) {
+                    diagnosisSelect.value = data.labels.ai_prediction;
+                }
+
+                // Update UI state 
                 viewEnd = ecgSignal.length - 1;
 
                 // Reset decision state
@@ -1166,25 +1187,21 @@
 
                 // 6. APPLY TO UI CAREFULLY (No Dropdown Hijacking!)
                 const aiBadge = document.getElementById("ui-ai-pred");
-                if (autoLabel) {
-                    // Let the AI Badge show the full complex clinical deduction
-                    if (isLockedRhythm) {
-                        if (aiBadge) {
+                if (aiBadge) { // Ensure aiBadge exists before manipulating
+                    if (autoLabel) {
+                        // Let the AI Badge show the full complex clinical deduction
+                        if (isLockedRhythm) {
                             aiBadge.innerText = `AI Deduction: ${currentRhythm} + ${autoLabel}`;
                             aiBadge.style.color = "#00ff99"; // Neon Green for positive rule match
+                        } else {
+                            aiBadge.innerText = autoLabel; // Show just the autoLabel
+                            aiBadge.style.color = "white"; // White for rule engine override
                         }
-                    } else {
-                        if (aiBadge) {
-                            aiBadge.innerText = `AI Deduction: ${autoLabel} (Rule Engine Override)`;
-                            aiBadge.style.color = "#00ff99";
-                        }
-                    }
 
-                    // --> WE DELETED THE CODE THAT CHANGES THE DROPDOWN HERE <--
-                    // The dropdown remains untouched so the doctor has total control.
-                } else {
-                    // Reset to normal if no automatic trigger found
-                    if (aiBadge && aiBadge.innerText.includes("(Auto-Rule)")) {
+                        // --> WE DELETED THE CODE THAT CHANGES THE DROPDOWN HERE <--
+                        // The dropdown remains untouched so the doctor has total control.
+                    } else {
+                        // If no automatic trigger found, show background rhythm in white
                         aiBadge.innerText = currentDecision.background_rhythm || "Sinus Rhythm";
                         aiBadge.style.color = "#00ffd0";
                     }

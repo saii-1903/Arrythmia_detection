@@ -1,0 +1,79 @@
+Clinical Decision Protocol: Hybrid Intelligence System
+1. Executive Summary
+The system utilizes a Neuro-Symbolic Architecture. It combines the pattern-recognition capabilities of a Deep Learning CNN-Transformer (the "Eyes") with a deterministic Clinical Rule Engine (the "Brain"). This ensures that all diagnoses are not only based on waveform shape but also strictly adhere to established cardiology guidelines.
+
+2. The Decision Hierarchy (Tiered Deduction)
+To arrive at a final diagnosis, the system executes a four-tiered deduction process:
+
+Tier 1: Signal Integrity (The SQI Veto)
+Before any diagnosis is attempted, the Signal Quality Index (SQI) must exceed a threshold of 0.5.
+
+Logic: If SQI < 0.5, the segment is forcefully labeled "Artifact".
+
+Purpose: Prevents the AI from hallucinating a diagnosis based on electronic noise or loose leads.
+
+Tier 2: Baseline Rhythm Analysis
+The system establishes the underlying background rhythm using a combination of Model Inference and Heart Rate calculation.
+
+Sinus Check: If HR is 60-100 BPM and the CNN identifies a P-wave, the baseline is Sinus Rhythm.
+
+Rhythm Check: If the CNN-Transformer identifies a global 10-second pattern (e.g., missing P-waves and irregular R-R intervals), it flags Atrial Fibrillation.
+
+Tier 3: Morphological Ectopy Detection
+The Ectopy Specialist Model scans every individual beat.
+
+PVC Detection: Identifies "Wide and Ugly" QRS complexes (>120ms) without a preceding P-wave.
+
+PAC Detection: Identifies premature beats with a narrow QRS and a distorted or early P-wave.
+
+Tier 4: The Pattern Refinement (Rules Engine)
+This is the "Counting Engine." It takes the individual beats from Tier 3 and applies mathematical sequence rules:
+
+Bigeminy Rule: Pattern of [Normal -> Ectopy -> Normal -> Ectopy].
+
+Couplet Rule: Two consecutive ectopies [Ectopy -> Ectopy].
+
+Triplet/Run Rule: Three or more consecutive ectopies.
+
+3. Priority Arbitration (The "Presidency" Logic)
+In cardiology, a patient often has multiple things happening at once. The Presidency Logic (implemented in the RhythmOrchestrator) ensures the most life-threatening condition is displayed as the Primary Conclusion.
+Rank	Clinical Conclusion	Priority Score	Display Logic
+1	VT / VF / NSVT	100	Immediate Override (High Danger)
+2	Atrial Fibrillation	90	Background Rhythm Lock
+3	Atrial Flutter	90	Background Rhythm Lock
+4	PSVT / SVT	80	Sustained Atrial Run
+5	AV Blocks (High Grade)	75	Conduction Delay
+6	PVC Patterns (Couplets)	60	Morphological Pattern
+7	PAC Patterns	40	Morphological Pattern
+8	Sinus Rhythms	10	Default Baseline
+Conflict Resolution Example:
+Input: System detects Atrial Fibrillation (Score 90) and one PVC (Score 20).
+
+Decision: The system "locks" the background to AFib.
+
+Result: The UI displays "AFib + PVC". The AFib is preserved because it has higher "Presidency" than a single ectopic beat.
+4. The Human-in-the-Loop (HITL) Workflow
+The system is designed to learn from the user through a Continuous Improvement Pipeline:
+
+AI Inference: The model provides a "Preliminary Deduction" based on the Hierarchy above.
+
+Cardiologist Audit: The user reviews the XAI Reasoning Ledger. The Ledger has been enhanced to extract exact millisecond timestamps (e.g., "Detected 2 PVCs at 4.2s and 4.9s triggering Couplet rule").
+
+Strict UI Decoupling: To preserve clinical integrity, AI deductions are strictly displayed in dedicated "AI Badges" (e.g., in Neon Green). The AI cannot hijack or auto-populate the master dropdown.
+
+Ground Truth Lock: The user explicitly selects the final label in the manual dropdown to override or confirm the AI's deduction.
+
+Database Synchronization:
+
+Manual labels are saved with is_corrected = TRUE.
+
+Segments are marked used_for_training = TRUE.
+
+Asynchronous Retraining: The retrain.py script pulls these verified segments. The CNN "looks" at the cardiologist's markers and adjusts its internal weights (Transfer Learning), ensuring the model is smarter for the next day's patients.
+
+5. System Integrity & Safety Features
+Lossless Backups: Daily automated .dump files (via `auto_backup.py` using custom pg_dump) ensure every second of cardiologist annotation is preserved.
+
+XAI Transparency: No "Black Box" decisions. Every label is supported by a dynamically generated, time-stamped narrative in the Reasoning Ledger, mapping CNN spatial findings into specific sequential timings.
+
+Decoupled Selection: The AI suggests via dedicated text readouts, but the Human verifies. The system never overwrites a doctor's manual dropdown decision without explicit confirmation.

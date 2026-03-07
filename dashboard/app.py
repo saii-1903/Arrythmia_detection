@@ -1045,7 +1045,7 @@ def verify_segment():
     if not segment_id:
         return jsonify({"error": "Missing segment_id"}), 400
 
-    success = db_service.update_segment_status(segment_id, "ANALYZED", bg_rhythm)
+    success = db_service.update_segment_status(segment_id, bg_rhythm)
     if success:
         return jsonify({"status": "ok"})
     else:

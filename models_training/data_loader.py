@@ -162,6 +162,13 @@ CLASS_NAMES = [
     "NSVT",                          # 34
     "PSVT",                          # 35
     "Pause",                         # 36
+
+    # NEW ECTOPY PATTERNS
+    "PAC Trigeminy",                 # 37
+    "PAC Quadrigeminy",              # 38
+    "PVC Quadrigeminy",              # 39
+    "Atrial Triplet",                # 40
+    "Ventricular Triplet",           # 41
 ]
 
 CLASS_INDEX = {name: i for i, name in enumerate(CLASS_NAMES)}
@@ -245,15 +252,15 @@ def get_ectopy_label_idx(original_label_name):
     label = normalize_label(original_label_name).upper()
 
     # Priority 1: Runs (Highest severity ectopy)
-    if any(t in label for t in ["RUN", "NSVT"]):
+    if any(t in label for t in ["RUN", "NSVT", "TRIPLET", "PSVT"]):
         return ECTOPY_INDEX["Run"]
         
-    # Priority 2: PACs (including Atrial Couplet/Bigeminy)
+    # Priority 2: PACs (including Atrial Couplet/Bigeminy/Trigeminy/Quadrigeminy)
     if any(t in label for t in ["PAC", "ATRIAL"]):
         return ECTOPY_INDEX["PAC"]
 
-    # Priority 3: PVCs (including bigeminy/couplets)
-    if any(t in label for t in ["PVC", "BIGEMINY", "TRIGEMINY", "COUPLET", "VPB"]):
+    # Priority 3: PVCs (including bigeminy/trigeminy/quadrigeminy/couplets)
+    if any(t in label for t in ["PVC", "BIGEMINY", "TRIGEMINY", "QUADRIGEMINY", "COUPLET", "VPB"]):
         return ECTOPY_INDEX["PVC"]
 
     # Default: No ectopy detected
@@ -298,9 +305,14 @@ LABEL_MAP = {
     "PVC": "PVC", "VPB": "PVC",
     "PVC BIGEMINY": "PVC Bigeminy", 
     "PVC TRIGEMINY": "PVC Trigeminy", 
+    "PVC QUADRIGEMINY": "PVC Quadrigeminy", 
+    "VENTRICULAR TRIPLET": "Ventricular Triplet",
     "PVC COUPLET": "PVC Couplet", 
     "PAC": "PAC", 
     "PAC BIGEMINY": "PAC Bigeminy", 
+    "PAC TRIGEMINY": "PAC Trigeminy", 
+    "PAC QUADRIGEMINY": "PAC Quadrigeminy", 
+    "ATRIAL TRIPLET": "Atrial Triplet",
     
     # Synonyms for MITDB/Clinical terminology
     "ATRIAL PREMATURE CONTRACTION": "PAC", 
@@ -330,6 +342,12 @@ def normalize_label(label: str):
     if "MOBITZ" in L: return "2nd Degree AV Block Type 2"
     if "BIGEMINY" in L: 
         return "PVC Bigeminy" if "PVC" in L or "VENTRICULAR" in L else "PAC Bigeminy"
+    if "TRIGEMINY" in L:
+        return "PVC Trigeminy" if "PVC" in L or "VENTRICULAR" in L else "PAC Trigeminy"
+    if "QUADRIGEMINY" in L:
+        return "PVC Quadrigeminy" if "PVC" in L or "VENTRICULAR" in L else "PAC Quadrigeminy"
+    if "TRIPLET" in L:
+        return "Ventricular Triplet" if "VENTRICULAR" in L or "PVC" in L else "Atrial Triplet"
     if "FLUTTER" in L: return "Atrial Flutter"
     if "FIBRILLATION" in L:
         return "Ventricular Fibrillation" if "VENTRICULAR" in L else "Atrial Fibrillation"
